@@ -1,0 +1,17 @@
+# Electron portable runtime and generated logs
+/*.exe
+/*.dll
+/*.pak
+/*.dat
+/*.bin
+/*.json
+!/resources/app/package.json
+/debug.log
+/resources/desktop.log
+/resources/default_app.asar
+/locales/
+
+# Local user data / build output
+/.cache/
+/dist/
+/release/

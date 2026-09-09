@@ -1,0 +1,461 @@
+:root {
+    --play-opacity: 1;
+    --hidden-opacity: 0;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; user-select: none; }
+
+html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
+    color: #eee;
+}
+
+.app-surface {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    background: #0a0a0a;
+    opacity: var(--play-opacity);
+    transition: opacity .18s ease;
+}
+body.is-playing .app-surface { opacity: var(--play-opacity); }
+body.window-hidden .app-surface { opacity: var(--hidden-opacity); }
+/* 设置面板、快捷键面板和媒体库属于窗口的独立覆盖层，也跟随播放时透明度 */
+body:not(.window-hidden) .opacity-panel,
+body:not(.window-hidden) .shortcut-panel,
+body:not(.window-hidden) .library-drawer {
+    opacity: var(--play-opacity);
+}
+
+/* 无边框标题栏：整条可拖动，右侧按钮保持可点击 */
+.titlebar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 32px;
+    z-index: 20;
+    background: linear-gradient(to bottom, rgba(0,0,0,.48), rgba(0,0,0,0));
+}
+.drag-strip {
+    position: absolute;
+    inset: 0 204px 0 0;
+    -webkit-app-region: drag;
+}
+.window-actions {
+    position: absolute;
+    top: 0; right: 0;
+    display: flex;
+    -webkit-app-region: no-drag;
+}
+.window-btn {
+    width: 34px;
+    height: 28px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: rgba(255,255,255,.72);
+    font: 18px/28px "Segoe UI", sans-serif;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+.window-btn:hover { background: rgba(255,255,255,.14); color: #fff; }
+.window-btn.active { background: rgba(255,255,255,.14); color: #fff; }
+.window-btn.close:hover { background: #c42b1c; color: #fff; }
+.window-btn svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+    vertical-align: middle;
+}
+.fit-icon {
+    position: relative;
+    display: block;
+    width: 18px;
+    height: 13px;
+    margin: auto;
+    border: 1.5px solid currentColor;
+}
+.fit-icon span {
+    position: absolute;
+    inset: 3px;
+    border: 1px solid currentColor;
+    transition: inset .15s;
+}
+.window-btn.active .fit-icon span { inset: -1px; }
+.shortcut-glyph {
+    display: block;
+    font: 16px/28px "Segoe UI Symbol", "Segoe UI", sans-serif;
+}
+
+.opacity-panel {
+    position: absolute;
+    top: 36px;
+    right: 6px;
+    z-index: 30;
+    width: 224px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 6px;
+    background: rgba(18,18,18,.96);
+    box-shadow: 0 6px 18px rgba(0,0,0,.36);
+    -webkit-app-region: no-drag;
+}
+.opacity-panel[hidden] { display: none; }
+.opacity-row {
+    display: grid;
+    grid-template-columns: 48px minmax(80px, 1fr) 38px;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 22px;
+}
+.opacity-panel label,
+.opacity-panel output {
+    color: #d6d6d6;
+    font-size: 12px;
+    line-height: 1;
+}
+.opacity-panel output {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.opacity-panel input[type="range"] { width: 100%; }
+
+.shortcut-panel {
+    position: absolute;
+    top: 36px;
+    right: 68px;
+    z-index: 30;
+    width: 238px;
+    padding: 10px;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 6px;
+    background: rgba(18,18,18,.96);
+    box-shadow: 0 6px 18px rgba(0,0,0,.36);
+    -webkit-app-region: no-drag;
+}
+.shortcut-panel[hidden] { display: none; }
+.shortcut-heading {
+    margin-bottom: 8px;
+    color: #d6d6d6;
+    font-size: 12px;
+    line-height: 18px;
+}
+.shortcut-recorder {
+    width: 100%;
+    min-height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0 10px;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 4px;
+    background: rgba(255,255,255,.05);
+    color: #eee;
+    font: 12px/1 "Segoe UI", "Microsoft YaHei", sans-serif;
+    cursor: pointer;
+}
+.shortcut-recorder:hover,
+.shortcut-recorder.recording {
+    border-color: rgba(77,159,255,.72);
+    background: rgba(77,159,255,.12);
+}
+#shortcutValue { font-variant-numeric: tabular-nums; }
+#shortcutAction { color: #77b5f5; }
+.shortcut-status {
+    min-height: 16px;
+    margin-top: 6px;
+    color: #858585;
+    font-size: 11px;
+    line-height: 16px;
+}
+.shortcut-status.error { color: #ff8e82; }
+
+.library-drawer {
+    position: absolute;
+    top: 32px;
+    right: 0;
+    bottom: 0;
+    z-index: 28;
+    width: min(320px, calc(100vw - 48px));
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid rgba(255,255,255,.12);
+    background: rgba(15,15,15,.97);
+    box-shadow: -8px 0 24px rgba(0,0,0,.34);
+    transition: opacity .18s ease;
+    -webkit-app-region: no-drag;
+}
+.library-drawer[hidden] { display: none; }
+body.window-hidden .library-drawer,
+body.window-hidden .opacity-panel,
+body.window-hidden .shortcut-panel {
+    opacity: var(--hidden-opacity);
+    pointer-events: none;
+}
+.library-header {
+    flex: 0 0 42px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 6px 0 10px;
+    border-bottom: 1px solid rgba(255,255,255,.1);
+}
+.library-tabs {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    align-self: stretch;
+}
+.library-tab {
+    position: relative;
+    min-width: 72px;
+    padding: 0 10px;
+    border: 0;
+    background: transparent;
+    color: #8f8f8f;
+    font: 13px/42px "Segoe UI", "Microsoft YaHei", sans-serif;
+    cursor: pointer;
+}
+.library-tab:hover { color: #ddd; }
+.library-tab.active { color: #fff; }
+.library-tab.active::after {
+    content: "";
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 0;
+    height: 2px;
+    background: #4d9fff;
+}
+.drawer-icon-btn {
+    flex: 0 0 30px;
+    width: 30px;
+    height: 30px;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: #aaa;
+    font: 18px/30px "Segoe UI", sans-serif;
+    cursor: pointer;
+}
+.drawer-icon-btn:hover { background: rgba(255,255,255,.12); color: #fff; }
+.drawer-icon-btn svg { width: 16px; height: 16px; fill: currentColor; }
+.library-panel {
+    min-height: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+.library-panel[hidden] { display: none; }
+.library-summary {
+    flex: 0 0 38px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 0 12px;
+    color: #bdbdbd;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(255,255,255,.07);
+}
+#playlistTitle {
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+#playlistCount { flex: 0 0 auto; color: #777; }
+.media-list {
+    min-height: 0;
+    flex: 1;
+    overflow: auto;
+}
+.media-row {
+    display: flex;
+    align-items: stretch;
+    border-bottom: 1px solid rgba(255,255,255,.065);
+}
+.media-open {
+    min-width: 0;
+    flex: 1;
+    display: block;
+    padding: 10px 12px;
+    border: 0;
+    background: transparent;
+    color: #d0d0d0;
+    text-align: left;
+    cursor: pointer;
+}
+.media-open:hover { background: rgba(255,255,255,.065); }
+.media-row.active .media-open {
+    background: rgba(77,159,255,.12);
+    box-shadow: inset 2px 0 #4d9fff;
+    color: #fff;
+}
+.media-row.missing .media-open { color: #777; cursor: default; }
+.media-title,
+.media-meta {
+    display: block;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.media-title { font-size: 13px; line-height: 18px; }
+.media-meta { margin-top: 3px; color: #777; font-size: 11px; line-height: 16px; }
+.media-row.active .media-meta { color: #91bceb; }
+.history-progress {
+    display: block;
+    height: 2px;
+    margin-top: 7px;
+    background: rgba(255,255,255,.1);
+}
+.history-progress > span {
+    display: block;
+    height: 100%;
+    background: #4d9fff;
+}
+.history-remove {
+    flex: 0 0 32px;
+    width: 32px;
+    border: 0;
+    background: transparent;
+    color: #777;
+    font-size: 16px;
+    cursor: pointer;
+}
+.history-remove:hover { background: rgba(196,43,28,.22); color: #ff8e82; }
+.library-empty {
+    margin: auto;
+    padding: 24px;
+    color: #686868;
+    font-size: 13px;
+    text-align: center;
+}
+
+/* 视频铺满，等比缩放 */
+#video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    background: #000;
+    object-fit: contain;
+    cursor: default;
+}
+body.video-cover #video { object-fit: cover; }
+
+/* 空状态提示 */
+.hint {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 14px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .3s;
+    background: radial-gradient(ellipse at center, #161616 0%, #0a0a0a 70%);
+    z-index: 1;
+}
+.hint.show { opacity: 1; }
+.hint-icon {
+    font-size: 44px; color: #555;
+    width: 90px; height: 90px;
+    display: flex; align-items: center; justify-content: center;
+    border: 2px dashed #444; border-radius: 50%;
+}
+.hint-text {
+    font-size: 14px; color: #888;
+    text-align: center; line-height: 1.9;
+}
+
+/* 拖放高亮 */
+.drop-mask {
+    position: absolute; inset: 0; z-index: 10;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(30, 100, 255, .18);
+    border: 3px dashed #4d9fff;
+    font-size: 22px; color: #cfe4ff;
+    pointer-events: none;
+}
+.drop-mask.show { display: flex; }
+
+/* 控制条 */
+.controls {
+    position: absolute; left: 0; right: 0; bottom: 0; z-index: 5;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px 12px;
+    background: linear-gradient(to top, rgba(0,0,0,.85) 0%, rgba(0,0,0,0) 100%);
+    opacity: 0;
+    transform: translateY(6px);
+    transition: opacity .25s, transform .25s;
+    pointer-events: none;
+}
+.controls.show {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+/* 有视频且暂停时控制条常显 */
+body.has-video .controls.show-paused { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+.btn {
+    flex: 0 0 auto;
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    background: transparent;
+    border: none; border-radius: 6px;
+    cursor: pointer;
+    color: #ddd;
+    transition: background .15s, color .15s;
+}
+.btn:hover { background: rgba(255,255,255,.15); color: #fff; }
+.btn.active { background: rgba(255,255,255,.15); color: #fff; }
+.btn:disabled { color: #555; cursor: default; }
+.btn:disabled:hover { background: transparent; }
+.btn svg { width: 20px; height: 20px; fill: currentColor; }
+.btn.vol svg { width: 18px; height: 18px; }
+
+/* 进度与音量条 */
+input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255,255,255,.25);
+    outline: none;
+    cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 13px; height: 13px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 4px rgba(0,0,0,.5);
+}
+#seek { flex: 1 1 auto; min-width: 60px; }
+#vol { width: 90px; }
+
+#time {
+    flex: 0 0 auto;
+    font-size: 12.5px;
+    color: #bbb;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .3px;
+    min-width: 110px;
+    text-align: center;
+}
+
+@media (max-width: 700px) {
+    .controls { gap: 6px; padding-left: 8px; padding-right: 8px; }
+    #vol { display: none; }
+    #time { min-width: 92px; }
+}
+
+@media (max-width: 540px) {
+    #time { display: none; }
+}

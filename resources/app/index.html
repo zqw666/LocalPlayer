@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; media-src file: blob:; style-src 'self' 'unsafe-inline'">
+<title>本地视频播放器</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="appSurface" class="app-surface">
+
+<!-- 无边框窗口拖动区与窗口按钮 -->
+<div class="titlebar">
+    <div class="drag-strip"></div>
+    <div class="window-actions">
+        <button id="btnLibrary" class="window-btn" type="button" title="媒体库" aria-label="媒体库" aria-expanded="false" aria-controls="libraryDrawer">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h2v2H4V5zm4 0h12v2H8V5zM4 11h2v2H4v-2zm4 0h12v2H8v-2zM4 17h2v2H4v-2zm4 0h12v2H8v-2z"/></svg>
+        </button>
+        <button id="btnFit" class="window-btn" type="button" title="画面模式：适应" aria-label="画面模式：适应" aria-pressed="false">
+            <span class="fit-icon" aria-hidden="true"><span></span></span>
+        </button>
+        <button id="btnOpacity" class="window-btn" type="button" title="透明度设置" aria-label="透明度设置" aria-expanded="false" aria-controls="opacityPanel">◐</button>
+        <button id="btnShortcut" class="window-btn" type="button" title="唤起快捷键" aria-label="唤起快捷键" aria-expanded="false" aria-controls="shortcutPanel"><span class="shortcut-glyph" aria-hidden="true">⌨</span></button>
+        <button id="btnMin" class="window-btn" type="button" title="最小化" aria-label="最小化">−</button>
+        <button id="btnClose" class="window-btn close" type="button" title="关闭" aria-label="关闭">×</button>
+    </div>
+</div>
+
+<video id="video" playsinline></video>
+
+<!-- 空状态提示 -->
+<div id="hint" class="hint show">
+    <div class="hint-icon">▷</div>
+    <div class="hint-text">把视频文件拖进窗口<br>或点击下方「打开」</div>
+</div>
+
+<!-- 拖放高亮遮罩 -->
+<div id="dropMask" class="drop-mask">松开打开文件或文件夹</div>
+
+<!-- 底部控制条 -->
+<div id="controls" class="controls">
+    <button id="btnOpen" class="btn" title="打开视频文件 (Ctrl+O)">
+        <svg viewBox="0 0 24 24"><path d="M6 2h8l5 5v15H6V2zm7 2H8v16h9V8h-4V4zm1 0v3h3l-3-3z"/></svg>
+    </button>
+    <button id="btnFolder" class="btn" title="打开视频文件夹 (Ctrl+Shift+O)">
+        <svg viewBox="0 0 24 24"><path d="M10 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-8l-2-2z"/></svg>
+    </button>
+    <button id="btnPrev" class="btn" type="button" title="上一个" disabled>
+        <svg viewBox="0 0 24 24"><path d="M6 5h2v14H6V5zm3 7 10 7V5L9 12z"/></svg>
+    </button>
+    <button id="btnPlay" class="btn" title="播放/暂停 (空格)">
+        <svg id="icPlay" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+        <svg id="icPause" viewBox="0 0 24 24" style="display:none"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>
+    </button>
+    <button id="btnNext" class="btn" type="button" title="下一个" disabled>
+        <svg viewBox="0 0 24 24"><path d="m5 5 10 7-10 7V5zm11 0h2v14h-2V5z"/></svg>
+    </button>
+    <input id="seek" type="range" min="0" max="1000" step="1" value="0" title="进度">
+    <span id="time">0:00 / 0:00</span>
+    <button id="btnVol" class="btn vol" title="静音 (M)">
+        <svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4z"/></svg>
+    </button>
+    <input id="vol" type="range" min="0" max="100" step="1" value="100" title="音量 (↑/↓)">
+    <button id="btnFs" class="btn" title="全屏 (双击 / F)">
+        <svg viewBox="0 0 24 24"><path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/></svg>
+    </button>
+</div>
+
+</div>
+
+<div id="opacityPanel" class="opacity-panel" hidden>
+    <div class="opacity-row">
+        <label for="playOpacity">播放时</label>
+        <input id="playOpacity" type="range" min="10" max="100" step="1" value="100">
+        <output id="playOpacityValue" for="playOpacity">100%</output>
+    </div>
+    <div class="opacity-row">
+        <label for="hiddenOpacity">移出后</label>
+        <input id="hiddenOpacity" type="range" min="0" max="100" step="1" value="0">
+        <output id="hiddenOpacityValue" for="hiddenOpacity">0%</output>
+    </div>
+</div>
+
+<div id="shortcutPanel" class="shortcut-panel" hidden>
+    <div class="shortcut-heading">唤起快捷键</div>
+    <button id="shortcutRecorder" class="shortcut-recorder" type="button">
+        <span id="shortcutValue">Ctrl + Alt + P</span>
+        <span id="shortcutAction">修改</span>
+    </button>
+    <div id="shortcutStatus" class="shortcut-status" role="status"></div>
+</div>
+
+<aside id="libraryDrawer" class="library-drawer" aria-label="媒体库" hidden>
+    <div class="library-header">
+        <div class="library-tabs" role="tablist" aria-label="媒体库视图">
+            <button id="tabPlaylist" class="library-tab active" type="button" role="tab" aria-selected="true" aria-controls="playlistPanel">播放列表</button>
+            <button id="tabHistory" class="library-tab" type="button" role="tab" aria-selected="false" aria-controls="historyPanel">历史记录</button>
+        </div>
+        <button id="btnClearHistory" class="drawer-icon-btn" type="button" title="清空历史" aria-label="清空历史" hidden>
+            <svg viewBox="0 0 24 24"><path d="M8 7h8l-.7 13H8.7L8 7zm2-4h4l1 2h4v2H5V5h4l1-2z"/></svg>
+        </button>
+        <button id="btnCloseLibrary" class="drawer-icon-btn" type="button" title="关闭媒体库" aria-label="关闭媒体库">×</button>
+    </div>
+
+    <section id="playlistPanel" class="library-panel" role="tabpanel" aria-labelledby="tabPlaylist">
+        <div class="library-summary">
+            <span id="playlistTitle">播放队列</span>
+            <span id="playlistCount">0 项</span>
+        </div>
+        <div id="playlistList" class="media-list"></div>
+        <div id="playlistEmpty" class="library-empty">尚未打开文件夹</div>
+    </section>
+
+    <section id="historyPanel" class="library-panel" role="tabpanel" aria-labelledby="tabHistory" hidden>
+        <div id="historyList" class="media-list"></div>
+        <div id="historyEmpty" class="library-empty">暂无观看历史</div>
+    </section>
+</aside>
+
+<script src="renderer.js"></script>
+</body>
+</html>
