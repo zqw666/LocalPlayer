@@ -143,7 +143,7 @@ function scheduleCursorHide() {
     cursorHideTimer = setTimeout(() => {
         if (windowHidden || shortcutRecording || !opacityPanel.hidden || !shortcutPanel.hidden || !libraryDrawer.hidden) return;
         document.body.classList.add('cursor-hidden');
-    }, 1200);
+    }, 1000);
 }
 
 function scheduleWindowHide() {
@@ -652,7 +652,7 @@ function showControls() {
     clearTimeout(ctrlTimer);
     ctrlTimer = setTimeout(() => {
         if (!video.paused) controls.classList.remove('show');
-    }, 2000);
+    }, 1000);
 }
 
 function refreshPausedState() {
@@ -692,7 +692,7 @@ controls.addEventListener('mouseenter', () => {
 });
 controls.addEventListener('mouseleave', () => {
     clearTimeout(ctrlTimer);
-    if (!video.paused) ctrlTimer = setTimeout(() => controls.classList.remove('show'), 1500);
+    if (!video.paused) ctrlTimer = setTimeout(() => controls.classList.remove('show'), 1000);
 });
 
 video.addEventListener('play', () => {
