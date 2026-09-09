@@ -63,6 +63,7 @@ let openRequestVersion = 0;
 let lastSave = 0;
 let windowHidden = false;
 let hideTimer = null;
+let cursorHideTimer = null;
 let ctrlTimer = null;
 let seekDragging = false;
 let fullScreen = false;
@@ -124,10 +125,25 @@ function formatWatchedAt(timestamp) {
 /* ============ 窗口内容隐形 / 恢复 ============ */
 function showWindowContent() {
     clearTimeout(hideTimer);
+    scheduleCursorHide();
     if (!windowHidden) return;
     windowHidden = false;
     document.body.classList.remove('window-hidden');
     api.setWindowContentHidden(false);
+}
+
+function showCursor() {
+    clearTimeout(cursorHideTimer);
+    document.body.classList.remove('cursor-hidden');
+}
+
+function scheduleCursorHide() {
+    showCursor();
+    clearTimeout(cursorHideTimer);
+    cursorHideTimer = setTimeout(() => {
+        if (windowHidden || shortcutRecording || !opacityPanel.hidden || !shortcutPanel.hidden || !libraryDrawer.hidden) return;
+        document.body.classList.add('cursor-hidden');
+    }, 1200);
 }
 
 function scheduleWindowHide() {
@@ -157,6 +173,7 @@ api.onFsState((state) => {
 function setOpacityPanelOpen(open) {
     opacityPanel.hidden = !open;
     btnOpacity.setAttribute('aria-expanded', String(open));
+    if (open) showCursor(); else scheduleCursorHide();
     if (open) {
         setLibraryOpen(false);
         setShortcutPanelOpen(false);
@@ -199,6 +216,7 @@ function setShortcutPanelOpen(open) {
     shortcutPanel.hidden = !open;
     btnShortcut.classList.toggle('active', open);
     btnShortcut.setAttribute('aria-expanded', String(open));
+    if (open) showCursor(); else scheduleCursorHide();
     if (open) {
         setOpacityPanelOpen(false);
         setLibraryOpen(false);
@@ -310,6 +328,7 @@ function setLibraryOpen(open) {
     libraryDrawer.hidden = !open;
     btnLibrary.classList.toggle('active', open);
     btnLibrary.setAttribute('aria-expanded', String(open));
+    if (open) showCursor(); else scheduleCursorHide();
     if (open) {
         opacityPanel.hidden = true;
         btnOpacity.setAttribute('aria-expanded', 'false');

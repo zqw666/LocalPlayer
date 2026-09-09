@@ -12,6 +12,10 @@ html, body {
     font-family: "Segoe UI", "Microsoft YaHei", sans-serif;
     color: #eee;
 }
+body.cursor-hidden,
+body.cursor-hidden * {
+    cursor: none !important;
+}
 
 .app-surface {
     position: absolute;
