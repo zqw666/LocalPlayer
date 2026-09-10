@@ -3,6 +3,7 @@ const api = window.player;
 
 const video = document.getElementById('video');
 const hint = document.getElementById('hint');
+const hintText = hint.querySelector('.hint-text');
 const dropMask = document.getElementById('dropMask');
 const controls = document.getElementById('controls');
 const btnPlay = document.getElementById('btnPlay');
@@ -89,6 +90,24 @@ let currentSummonShortcut = 'CommandOrControl+Alt+P';
 let baiduDirectory = '/';
 let baiduFiles = [];
 let baiduConnected = false;
+
+function showPlaybackError(error) {
+    const detail = error?.message || String(error || '未知错误');
+    if (error?.name === 'AbortError' || detail.includes('interrupted by a call to pause()')) return;
+    console.error('video play failed:', detail, video.currentSrc);
+    hintText.textContent = currentMedia?.source === 'baidu'
+        ? '百度网盘视频加载失败，请重新尝试'
+        : '视频加载失败';
+    hint.classList.add('show');
+    if (currentMedia?.source === 'baidu') {
+        baiduBrowserStatus.textContent = '视频加载失败：' + detail;
+        baiduBrowserStatus.classList.add('error');
+    }
+}
+
+function playCurrentVideo() {
+    return video.play().catch(showPlaybackError);
+}
 
 function readStoredArray(key) {
     try {
@@ -727,6 +746,7 @@ function loadVideo(item, options = {}) {
     currentMedia = item;
     currentPath = item.path;
     lastSave = 0;
+    hintText.textContent = '把视频文件拖进窗口，或点击下方「打开」';
     hint.classList.remove('show');
     document.body.classList.add('has-video');
     document.body.classList.remove('is-playing');
@@ -742,7 +762,7 @@ function loadVideo(item, options = {}) {
         timeEl.textContent = fmt(video.currentTime) + ' / ' + fmt(video.duration);
         updateHistoryRecord();
         refreshPausedState();
-        if (autoplay) video.play().catch(() => {});
+        if (autoplay) playCurrentVideo();
     };
     video.load();
 }
@@ -861,7 +881,7 @@ function togglePlay() {
         btnOpen.click();
         return;
     }
-    if (video.paused) video.play().catch(() => {}); else video.pause();
+    if (video.paused) playCurrentVideo(); else video.pause();
     refreshPausedState();
 }
 
@@ -908,6 +928,11 @@ video.addEventListener('pause', () => {
     saveCurrentProgress();
     refreshPausedState();
     renderPlaylist();
+});
+video.addEventListener('error', () => {
+    const mediaError = video.error;
+    const detail = mediaError ? `媒体错误 ${mediaError.code}: ${mediaError.message || '无法加载视频'}` : '无法加载视频';
+    showPlaybackError(detail);
 });
 video.addEventListener('ended', () => {
     document.body.classList.remove('is-playing');

@@ -48,12 +48,15 @@ test('lists files and resolves a download link', async () => {
 test('filters video extensions and maps cloud items', () => {
     assert.equal(isVideoFile('电影.MKV'), true);
     assert.equal(isVideoFile('封面.jpg'), false);
-    assert.deepEqual(cloudItem({ fs_id: 9, path: '/a/2.mp4', server_filename: '2.mp4', size: 12 }), {
+    assert.deepEqual(cloudItem(
+        { fs_id: 9, path: '/a/2.mp4', server_filename: '2.mp4', size: 12 },
+        'http://127.0.0.1:1234/baidu-video/9?key=test'
+    ), {
         source: 'baidu',
         fsId: '9',
         path: 'baidu://9/a/2.mp4',
         cloudPath: '/a/2.mp4',
-        url: 'baidu-video://stream/9',
+        url: 'http://127.0.0.1:1234/baidu-video/9?key=test',
         name: '2.mp4',
         relativePath: '2.mp4',
         size: 12

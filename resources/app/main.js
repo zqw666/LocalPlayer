@@ -1,15 +1,11 @@
 // 本地视频播放器 - 主进程
 // 核心需求：鼠标移出窗口 → 整个窗口变透明隐形；鼠标移回窗口区域 → 恢复
-const { app, BrowserWindow, ipcMain, dialog, Menu, screen, globalShortcut, safeStorage, shell, protocol, net } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, screen, globalShortcut, safeStorage, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { isSupportedVideo, mediaItemForPath, openLocalPath } = require('./media-library');
 const baidu = require('./baidu-netdisk');
-
-protocol.registerSchemesAsPrivileged([{
-    scheme: 'baidu-video',
-    privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true }
-}]);
+const { startBaiduStreamServer } = require('./baidu-stream-server');
 
 // 这台机器的 AMD 驱动曾导致 Electron 渲染进程崩溃；本地播放器优先保证稳定。
 app.disableHardwareAcceleration();
@@ -23,6 +19,7 @@ let summonShortcut = DEFAULT_SUMMON_SHORTCUT;
 let shortcutSuspended = false;
 let baiduCredentials = null;
 let baiduTokens = null;
+let baiduStreamProxy = null;
 const LOG = path.join(__dirname, '..', 'desktop.log');
 function log(msg) {
     try { fs.appendFileSync(LOG, `[${new Date().toLocaleTimeString()}] ${msg}\n`); } catch (_) {}
@@ -360,7 +357,9 @@ ipcMain.handle('baidu-list', async (_event, directory) => {
 });
 ipcMain.handle('baidu-cloud-item', (_event, file) => {
     if (!file || !file.fsId || !file.path || !file.name) throw new Error('网盘文件无效');
-    return baidu.cloudItem({ fs_id: file.fsId, path: file.path, server_filename: file.name, size: file.size });
+    if (!baiduStreamProxy) throw new Error('百度网盘播放服务尚未启动');
+    const streamUrl = baiduStreamProxy.urlFor(file.fsId);
+    return baidu.cloudItem({ fs_id: file.fsId, path: file.path, server_filename: file.name, size: file.size }, streamUrl);
 });
 ipcMain.handle('baidu-disconnect', () => {
     baiduCredentials = null;
@@ -397,26 +396,19 @@ ipcMain.handle('pick-folder', async () => {
 });
 
 if (gotSingleInstanceLock) {
-    app.whenReady().then(() => {
+    app.whenReady().then(async () => {
         Menu.setApplicationMenu(null); // 极简：去掉菜单栏
         app.setName('本地视频播放器');
         loadBaiduState();
-        protocol.handle('baidu-video', async (request) => {
-            try {
-                const fsId = decodeURIComponent(new URL(request.url).pathname.slice(1));
-                if (!/^\d+$/.test(fsId)) return new Response('Invalid file id', { status: 400 });
-                const token = await baiduAccessToken();
-                const downloadUrl = new URL(await baidu.getDownloadLink(token, fsId));
-                downloadUrl.searchParams.set('access_token', token);
-                const headers = { 'User-Agent': 'pan.baidu.com' };
-                const range = request.headers.get('range');
-                if (range) headers.Range = range;
-                return net.fetch(downloadUrl.toString(), { headers });
-            } catch (error) {
-                log('baidu stream failed: ' + error.message);
-                return new Response(error.message, { status: 502 });
-            }
-        });
+        try {
+            baiduStreamProxy = await startBaiduStreamServer({
+                getAccessToken: baiduAccessToken,
+                getDownloadLink: baidu.getDownloadLink,
+                log
+            });
+        } catch (error) {
+            log('baidu stream proxy failed to start: ' + error.message);
+        }
         createWindow();
         summonShortcut = loadSummonShortcut();
         let registered = registerSummonShortcut(summonShortcut);
@@ -431,5 +423,8 @@ if (gotSingleInstanceLock) {
     });
 }
 
-app.on('will-quit', () => globalShortcut.unregisterAll());
+app.on('will-quit', () => {
+    baiduStreamProxy?.close();
+    globalShortcut.unregisterAll();
+});
 app.on('window-all-closed', () => app.quit());

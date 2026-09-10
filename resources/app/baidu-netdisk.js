@@ -82,14 +82,15 @@ function isVideoFile(name) {
     return VIDEO_EXTENSIONS.has(path.extname(String(name || '')).toLowerCase());
 }
 
-function cloudItem(file) {
+function cloudItem(file, streamUrl) {
     const fsId = String(file.fs_id);
+    if (!streamUrl) throw new Error('百度网盘播放地址无效');
     return {
         source: 'baidu',
         fsId,
         path: `baidu://${fsId}${file.path}`,
         cloudPath: file.path,
-        url: `baidu-video://stream/${encodeURIComponent(fsId)}`,
+        url: streamUrl,
         name: file.server_filename,
         relativePath: file.server_filename,
         size: Number(file.size) || 0
