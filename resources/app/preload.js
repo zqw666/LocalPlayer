@@ -15,6 +15,13 @@ contextBridge.exposeInMainWorld('player', {
     suspendSummonShortcut: () => ipcRenderer.invoke('suspend-summon-shortcut'),
     resumeSummonShortcut: () => ipcRenderer.invoke('resume-summon-shortcut'),
     setSummonShortcut: (shortcut) => ipcRenderer.invoke('set-summon-shortcut', shortcut),
+    baiduStatus: () => ipcRenderer.invoke('baidu-status'),
+    baiduConfigure: (apiKey, secretKey) => ipcRenderer.invoke('baidu-configure', apiKey, secretKey),
+    baiduOpenAuthorization: () => ipcRenderer.invoke('baidu-open-authorization'),
+    baiduCompleteAuthorization: (code) => ipcRenderer.invoke('baidu-complete-authorization', code),
+    baiduList: (directory) => ipcRenderer.invoke('baidu-list', directory),
+    baiduCloudItem: (file) => ipcRenderer.invoke('baidu-cloud-item', file),
+    baiduDisconnect: () => ipcRenderer.invoke('baidu-disconnect'),
     // 主进程同步全屏状态
     onFsState: (cb) => ipcRenderer.on('fs-state', (_e, fs) => cb(fs)),
     // 打开文件对话框

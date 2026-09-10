@@ -36,8 +36,10 @@ const shortcutStatus = document.getElementById('shortcutStatus');
 const libraryDrawer = document.getElementById('libraryDrawer');
 const tabPlaylist = document.getElementById('tabPlaylist');
 const tabHistory = document.getElementById('tabHistory');
+const tabBaidu = document.getElementById('tabBaidu');
 const playlistPanel = document.getElementById('playlistPanel');
 const historyPanel = document.getElementById('historyPanel');
+const baiduPanel = document.getElementById('baiduPanel');
 const playlistTitle = document.getElementById('playlistTitle');
 const playlistCount = document.getElementById('playlistCount');
 const playlistList = document.getElementById('playlistList');
@@ -46,6 +48,21 @@ const historyList = document.getElementById('historyList');
 const historyEmpty = document.getElementById('historyEmpty');
 const btnClearHistory = document.getElementById('btnClearHistory');
 const btnCloseLibrary = document.getElementById('btnCloseLibrary');
+const baiduConnect = document.getElementById('baiduConnect');
+const baiduBrowser = document.getElementById('baiduBrowser');
+const baiduApiKey = document.getElementById('baiduApiKey');
+const baiduSecretKey = document.getElementById('baiduSecretKey');
+const baiduAuthCode = document.getElementById('baiduAuthCode');
+const btnBaiduAuthorize = document.getElementById('btnBaiduAuthorize');
+const btnBaiduComplete = document.getElementById('btnBaiduComplete');
+const baiduConnectStatus = document.getElementById('baiduConnectStatus');
+const btnBaiduBack = document.getElementById('btnBaiduBack');
+const btnBaiduRefresh = document.getElementById('btnBaiduRefresh');
+const btnBaiduDisconnect = document.getElementById('btnBaiduDisconnect');
+const baiduPath = document.getElementById('baiduPath');
+const baiduList = document.getElementById('baiduList');
+const baiduEmpty = document.getElementById('baiduEmpty');
+const baiduBrowserStatus = document.getElementById('baiduBrowserStatus');
 
 const PLAYLIST_KEY = 'player_playlist_v1';
 const HISTORY_KEY = 'player_history_v1';
@@ -69,6 +86,9 @@ let seekDragging = false;
 let fullScreen = false;
 let shortcutRecording = false;
 let currentSummonShortcut = 'CommandOrControl+Alt+P';
+let baiduDirectory = '/';
+let baiduFiles = [];
+let baiduConnected = false;
 
 function readStoredArray(key) {
     try {
@@ -337,21 +357,28 @@ function setLibraryOpen(open) {
 }
 
 function setLibraryTab(tab) {
-    activeLibraryTab = tab === 'history' ? 'history' : 'playlist';
+    activeLibraryTab = tab === 'history' || tab === 'baidu' ? tab : 'playlist';
     const showPlaylist = activeLibraryTab === 'playlist';
+    const showHistory = activeLibraryTab === 'history';
+    const showBaidu = activeLibraryTab === 'baidu';
     tabPlaylist.classList.toggle('active', showPlaylist);
-    tabHistory.classList.toggle('active', !showPlaylist);
+    tabHistory.classList.toggle('active', showHistory);
+    tabBaidu.classList.toggle('active', showBaidu);
     tabPlaylist.setAttribute('aria-selected', String(showPlaylist));
-    tabHistory.setAttribute('aria-selected', String(!showPlaylist));
+    tabHistory.setAttribute('aria-selected', String(showHistory));
+    tabBaidu.setAttribute('aria-selected', String(showBaidu));
     playlistPanel.hidden = !showPlaylist;
-    historyPanel.hidden = showPlaylist;
-    btnClearHistory.hidden = showPlaylist || watchHistory.length === 0;
+    historyPanel.hidden = !showHistory;
+    baiduPanel.hidden = !showBaidu;
+    btnClearHistory.hidden = !showHistory || watchHistory.length === 0;
+    if (showBaidu) void loadBaiduStatus();
 }
 
 btnLibrary.onclick = () => setLibraryOpen(libraryDrawer.hidden);
 btnCloseLibrary.onclick = () => setLibraryOpen(false);
 tabPlaylist.onclick = () => setLibraryTab('playlist');
 tabHistory.onclick = () => setLibraryTab('history');
+tabBaidu.onclick = () => setLibraryTab('baidu');
 
 function createText(className, text) {
     const element = document.createElement('span');
@@ -359,6 +386,146 @@ function createText(className, text) {
     element.textContent = text;
     return element;
 }
+
+function cloudError(error) {
+    return error?.message || String(error || '百度网盘请求失败');
+}
+
+function formatSize(bytes) {
+    const size = Number(bytes) || 0;
+    if (size < 1024) return size + ' B';
+    if (size < 1024 * 1024) return Math.round(size / 1024) + ' KB';
+    if (size < 1024 * 1024 * 1024) return (size / 1024 / 1024).toFixed(1) + ' MB';
+    return (size / 1024 / 1024 / 1024).toFixed(1) + ' GB';
+}
+
+function parentCloudPath(directory) {
+    if (!directory || directory === '/') return '/';
+    const parts = directory.split('/').filter(Boolean);
+    parts.pop();
+    return parts.length ? '/' + parts.join('/') : '/';
+}
+
+function setBaiduConnected(connected, apiKey = '') {
+    baiduConnected = connected;
+    baiduConnect.hidden = connected;
+    baiduBrowser.hidden = !connected;
+    if (apiKey) baiduApiKey.value = apiKey;
+}
+
+async function loadBaiduStatus() {
+    try {
+        const status = await api.baiduStatus();
+        setBaiduConnected(status.connected, status.apiKey);
+        if (status.connected && !baiduFiles.length) await loadBaiduDirectory(baiduDirectory);
+    } catch (error) {
+        setBaiduConnected(false);
+        baiduConnectStatus.textContent = cloudError(error);
+        baiduConnectStatus.classList.add('error');
+    }
+}
+
+function renderBaiduFiles() {
+    baiduList.replaceChildren();
+    baiduPath.textContent = baiduDirectory;
+    baiduPath.title = baiduDirectory;
+    btnBaiduBack.disabled = baiduDirectory === '/';
+    const visibleFiles = baiduFiles.filter((file) => file.isDirectory || file.isVideo);
+    baiduEmpty.hidden = visibleFiles.length > 0;
+
+    const fragment = document.createDocumentFragment();
+    visibleFiles.forEach((file) => {
+        const row = document.createElement('div');
+        row.className = 'media-row';
+        const icon = createText(file.isDirectory ? 'cloud-folder' : 'cloud-video', file.isDirectory ? '▸' : '▷');
+        const openButton = document.createElement('button');
+        openButton.type = 'button';
+        openButton.className = 'media-open';
+        openButton.title = file.path;
+        openButton.appendChild(createText('media-title', file.name));
+        openButton.appendChild(createText('media-meta', file.isDirectory ? '文件夹' : formatSize(file.size)));
+        openButton.onclick = () => file.isDirectory ? loadBaiduDirectory(file.path) : playBaiduFile(file);
+        row.append(icon, openButton);
+        fragment.appendChild(row);
+    });
+    baiduList.appendChild(fragment);
+}
+
+async function loadBaiduDirectory(directory) {
+    baiduBrowserStatus.textContent = '正在加载…';
+    baiduBrowserStatus.classList.remove('error');
+    try {
+        baiduFiles = await api.baiduList(directory);
+        baiduDirectory = directory;
+        renderBaiduFiles();
+        baiduBrowserStatus.textContent = '';
+    } catch (error) {
+        baiduBrowserStatus.textContent = cloudError(error);
+        baiduBrowserStatus.classList.add('error');
+    }
+}
+
+async function cloudQueueForDirectory(directory, files = null) {
+    const entries = files || await api.baiduList(directory);
+    const videos = entries.filter((file) => file.isVideo);
+    return Promise.all(videos.map((file) => api.baiduCloudItem(file)));
+}
+
+async function playBaiduFile(file) {
+    baiduBrowserStatus.textContent = '正在准备视频…';
+    try {
+        const items = await cloudQueueForDirectory(baiduDirectory, baiduFiles);
+        const currentPath = `baidu://${file.fsId}${file.path}`;
+        setFolderPlaylist({ kind: 'folder', root: 'baidu:' + baiduDirectory, items }, { currentPath, autoplay: true });
+        setLibraryOpen(false);
+    } catch (error) {
+        baiduBrowserStatus.textContent = cloudError(error);
+        baiduBrowserStatus.classList.add('error');
+    }
+}
+
+btnBaiduAuthorize.onclick = async () => {
+    baiduConnectStatus.textContent = '正在打开授权页…';
+    baiduConnectStatus.classList.remove('error');
+    try {
+        if (baiduSecretKey.value) {
+            await api.baiduConfigure(baiduApiKey.value, baiduSecretKey.value);
+            baiduSecretKey.value = '';
+        }
+        await api.baiduOpenAuthorization();
+        baiduConnectStatus.textContent = '授权后，将页面显示的授权码粘贴到下方';
+    } catch (error) {
+        baiduConnectStatus.textContent = cloudError(error);
+        baiduConnectStatus.classList.add('error');
+    }
+};
+
+btnBaiduComplete.onclick = async () => {
+    baiduConnectStatus.textContent = '正在连接…';
+    baiduConnectStatus.classList.remove('error');
+    try {
+        const status = await api.baiduCompleteAuthorization(baiduAuthCode.value);
+        baiduAuthCode.value = '';
+        setBaiduConnected(status.connected, status.apiKey);
+        baiduDirectory = '/';
+        baiduFiles = [];
+        await loadBaiduDirectory('/');
+    } catch (error) {
+        baiduConnectStatus.textContent = cloudError(error);
+        baiduConnectStatus.classList.add('error');
+    }
+};
+
+btnBaiduBack.onclick = () => loadBaiduDirectory(parentCloudPath(baiduDirectory));
+btnBaiduRefresh.onclick = () => loadBaiduDirectory(baiduDirectory);
+btnBaiduDisconnect.onclick = async () => {
+    if (!window.confirm('断开百度网盘并删除本机授权信息？')) return;
+    await api.baiduDisconnect();
+    baiduFiles = [];
+    baiduDirectory = '/';
+    setBaiduConnected(false);
+    baiduConnectStatus.textContent = '已断开，凭据和令牌已从本机删除';
+};
 
 function renderPlaylist() {
     playlistList.replaceChildren();
@@ -404,7 +571,10 @@ function updateHistoryRecord(options = {}) {
     const record = {
         path: currentPath,
         name: currentMedia.name || fileNameFromPath(currentPath),
-        directory: directoryFromPath(currentPath),
+        directory: currentMedia.source === 'baidu' ? directoryFromPath(currentMedia.cloudPath) : directoryFromPath(currentPath),
+        source: currentMedia.source || 'local',
+        fsId: currentMedia.fsId || '',
+        cloudPath: currentMedia.cloudPath || '',
         position: isFinite(video.currentTime) ? video.currentTime : (previous?.position || 0),
         duration: isFinite(video.duration) ? video.duration : (previous?.duration || 0),
         lastPlayedAt: options.touchTime ? Date.now() : (previous?.lastPlayedAt || Date.now())
@@ -444,7 +614,7 @@ function renderHistory() {
         openButton.disabled = missing;
         openButton.title = item.path;
         openButton.appendChild(createText('media-title', item.name || fileNameFromPath(item.path)));
-        openButton.appendChild(createText('media-meta', missing ? '文件不存在' : (item.directory || '本地文件')));
+        openButton.appendChild(createText('media-meta', missing ? '文件不存在' : (item.source === 'baidu' ? '百度网盘 · ' + (item.directory || '/') : (item.directory || '本地文件'))));
         if (!missing) {
             const watched = formatWatchedAt(item.lastPlayedAt);
             openButton.appendChild(createText('media-meta', (watched ? watched + ' · ' : '') + fmt(item.position) + ' / ' + fmt(item.duration)));
@@ -474,9 +644,25 @@ function renderHistory() {
 
 async function openHistoryEntry(item) {
     const version = ++openRequestVersion;
-    const result = await api.openLocalPath(item.path);
+    let result = null;
+    try {
+        if (item.source === 'baidu' || item.path.startsWith('baidu://')) {
+            const match = item.path.match(/^baidu:\/\/(\d+)/);
+            const fsId = item.fsId || match?.[1];
+            result = await api.baiduCloudItem({ fsId, path: item.cloudPath || item.path.replace(/^baidu:\/\/\d+/, ''), name: item.name, size: 0 });
+        } else {
+            result = await api.openLocalPath(item.path);
+        }
+    } catch (error) {
+        if (version === openRequestVersion) {
+            setLibraryTab('baidu');
+            baiduBrowserStatus.textContent = cloudError(error);
+            baiduBrowserStatus.classList.add('error');
+        }
+        return;
+    }
     if (version !== openRequestVersion) return;
-    if (!result || result.kind !== 'file') {
+    if (!result || (result.kind && result.kind !== 'file')) {
         missingHistoryPaths.add(item.path);
         renderHistory();
         return;
@@ -637,7 +823,18 @@ async function restoreLastPlaylist() {
     const saved = readStoredObject(PLAYLIST_KEY);
     if (!saved?.root) return;
     const version = openRequestVersion;
-    const result = await api.openLocalPath(saved.root);
+    let result;
+    if (saved.root.startsWith('baidu:')) {
+        try {
+            const directory = saved.root.slice('baidu:'.length) || '/';
+            const items = await cloudQueueForDirectory(directory);
+            result = { kind: 'folder', root: saved.root, items };
+        } catch (_) {
+            return;
+        }
+    } else {
+        result = await api.openLocalPath(saved.root);
+    }
     if (version !== openRequestVersion) return;
     if (!result || result.kind !== 'folder') {
         localStorage.removeItem(PLAYLIST_KEY);

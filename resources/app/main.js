@@ -1,9 +1,15 @@
 // 本地视频播放器 - 主进程
 // 核心需求：鼠标移出窗口 → 整个窗口变透明隐形；鼠标移回窗口区域 → 恢复
-const { app, BrowserWindow, ipcMain, dialog, Menu, screen, globalShortcut } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, screen, globalShortcut, safeStorage, shell, protocol, net } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { isSupportedVideo, mediaItemForPath, openLocalPath } = require('./media-library');
+const baidu = require('./baidu-netdisk');
+
+protocol.registerSchemesAsPrivileged([{
+    scheme: 'baidu-video',
+    privileges: { standard: true, secure: true, stream: true, supportFetchAPI: true }
+}]);
 
 // 这台机器的 AMD 驱动曾导致 Electron 渲染进程崩溃；本地播放器优先保证稳定。
 app.disableHardwareAcceleration();
@@ -15,6 +21,8 @@ let fullScreen = false;
 const DEFAULT_SUMMON_SHORTCUT = 'CommandOrControl+Alt+P';
 let summonShortcut = DEFAULT_SUMMON_SHORTCUT;
 let shortcutSuspended = false;
+let baiduCredentials = null;
+let baiduTokens = null;
 const LOG = path.join(__dirname, '..', 'desktop.log');
 function log(msg) {
     try { fs.appendFileSync(LOG, `[${new Date().toLocaleTimeString()}] ${msg}\n`); } catch (_) {}
@@ -67,25 +75,97 @@ function shortcutSettingsPath() {
     return path.join(app.getPath('userData'), 'player-settings.json');
 }
 
-function loadSummonShortcut() {
+function readSettings() {
     try {
-        const settings = JSON.parse(fs.readFileSync(shortcutSettingsPath(), 'utf8'));
-        if (typeof settings.summonShortcut === 'string' && settings.summonShortcut.length <= 80) {
-            return settings.summonShortcut;
-        }
-    } catch (_) {}
+        const value = JSON.parse(fs.readFileSync(shortcutSettingsPath(), 'utf8'));
+        return value && typeof value === 'object' ? value : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+function writeSettings(settings) {
+    fs.mkdirSync(path.dirname(shortcutSettingsPath()), { recursive: true });
+    fs.writeFileSync(shortcutSettingsPath(), JSON.stringify(settings, null, 2));
+}
+
+function loadSummonShortcut() {
+    const settings = readSettings();
+    if (typeof settings.summonShortcut === 'string' && settings.summonShortcut.length <= 80) {
+        return settings.summonShortcut;
+    }
     return DEFAULT_SUMMON_SHORTCUT;
 }
 
 function saveSummonShortcut() {
     try {
-        fs.mkdirSync(path.dirname(shortcutSettingsPath()), { recursive: true });
-        fs.writeFileSync(shortcutSettingsPath(), JSON.stringify({ summonShortcut }, null, 2));
+        writeSettings({ ...readSettings(), summonShortcut });
         return true;
     } catch (error) {
         log('shortcut settings save failed: ' + error.message);
         return false;
     }
+}
+
+function saveBaiduState() {
+    if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows 安全存储当前不可用');
+    const settings = readSettings();
+    if (!baiduCredentials) {
+        delete settings.baiduNetdisk;
+    } else {
+        const encrypted = safeStorage.encryptString(JSON.stringify({ credentials: baiduCredentials, tokens: baiduTokens }));
+        settings.baiduNetdisk = encrypted.toString('base64');
+    }
+    writeSettings(settings);
+}
+
+function loadBaiduState() {
+    const encrypted = readSettings().baiduNetdisk;
+    if (!encrypted || !safeStorage.isEncryptionAvailable()) return;
+    try {
+        const value = JSON.parse(safeStorage.decryptString(Buffer.from(encrypted, 'base64')));
+        baiduCredentials = value.credentials || null;
+        baiduTokens = value.tokens || null;
+    } catch (error) {
+        log('baidu settings load failed: ' + error.message);
+    }
+}
+
+function baiduStatus() {
+    return {
+        configured: !!(baiduCredentials?.apiKey && baiduCredentials?.secretKey),
+        connected: !!baiduTokens?.refreshToken,
+        apiKey: baiduCredentials?.apiKey || ''
+    };
+}
+
+function storeBaiduToken(payload) {
+    baiduTokens = {
+        accessToken: payload.access_token,
+        refreshToken: payload.refresh_token || baiduTokens?.refreshToken,
+        expiresAt: Date.now() + Math.max(60, Number(payload.expires_in) || 2592000) * 1000
+    };
+    saveBaiduState();
+}
+
+async function baiduAccessToken() {
+    if (!baiduCredentials || !baiduTokens?.refreshToken) throw new Error('请先连接百度网盘');
+    if (baiduTokens.accessToken && baiduTokens.expiresAt > Date.now() + 60000) return baiduTokens.accessToken;
+    const payload = await baidu.refreshAccessToken(baiduCredentials, baiduTokens.refreshToken);
+    storeBaiduToken(payload);
+    return baiduTokens.accessToken;
+}
+
+function baiduFilePayload(file) {
+    return {
+        fsId: String(file.fs_id),
+        name: file.server_filename,
+        path: file.path,
+        isDirectory: Number(file.isdir) === 1,
+        size: Number(file.size) || 0,
+        modifiedAt: Number(file.server_mtime) || 0,
+        isVideo: Number(file.isdir) !== 1 && baidu.isVideoFile(file.server_filename)
+    };
 }
 
 function registerSummonShortcut(shortcut) {
@@ -247,6 +327,48 @@ ipcMain.handle('resume-summon-shortcut', () => {
 });
 ipcMain.handle('set-summon-shortcut', (_event, shortcut) => activateSummonShortcut(shortcut));
 
+ipcMain.handle('baidu-status', () => baiduStatus());
+ipcMain.handle('baidu-configure', (_event, apiKey, secretKey) => {
+    const nextApiKey = String(apiKey || '').trim();
+    const nextSecretKey = String(secretKey || '').trim();
+    if (!nextApiKey || !nextSecretKey || nextApiKey.length > 200 || nextSecretKey.length > 200) {
+        throw new Error('API Key 或 Secret Key 格式无效');
+    }
+    baiduCredentials = { apiKey: nextApiKey, secretKey: nextSecretKey };
+    baiduTokens = null;
+    saveBaiduState();
+    return baiduStatus();
+});
+ipcMain.handle('baidu-open-authorization', async () => {
+    if (!baiduCredentials) throw new Error('请先保存 API 凭据');
+    await shell.openExternal(baidu.authorizationUrl(baiduCredentials.apiKey));
+    return true;
+});
+ipcMain.handle('baidu-complete-authorization', async (_event, code) => {
+    if (!baiduCredentials) throw new Error('请先保存 API 凭据');
+    const authorizationCode = String(code || '').trim();
+    if (!authorizationCode || authorizationCode.length > 500) throw new Error('授权码格式无效');
+    const payload = await baidu.exchangeAuthorizationCode(baiduCredentials, authorizationCode);
+    storeBaiduToken(payload);
+    return baiduStatus();
+});
+ipcMain.handle('baidu-list', async (_event, directory) => {
+    const cloudDirectory = String(directory || '/');
+    if (!cloudDirectory.startsWith('/') || cloudDirectory.length > 4096) throw new Error('网盘路径无效');
+    const files = await baidu.listFiles(await baiduAccessToken(), cloudDirectory);
+    return files.map(baiduFilePayload);
+});
+ipcMain.handle('baidu-cloud-item', (_event, file) => {
+    if (!file || !file.fsId || !file.path || !file.name) throw new Error('网盘文件无效');
+    return baidu.cloudItem({ fs_id: file.fsId, path: file.path, server_filename: file.name, size: file.size });
+});
+ipcMain.handle('baidu-disconnect', () => {
+    baiduCredentials = null;
+    baiduTokens = null;
+    saveBaiduState();
+    return baiduStatus();
+});
+
 ipcMain.handle('open-local-path', (_event, p) => openLocalPath(p));
 
 // "打开文件"按钮 → 系统对话框
@@ -278,6 +400,23 @@ if (gotSingleInstanceLock) {
     app.whenReady().then(() => {
         Menu.setApplicationMenu(null); // 极简：去掉菜单栏
         app.setName('本地视频播放器');
+        loadBaiduState();
+        protocol.handle('baidu-video', async (request) => {
+            try {
+                const fsId = decodeURIComponent(new URL(request.url).pathname.slice(1));
+                if (!/^\d+$/.test(fsId)) return new Response('Invalid file id', { status: 400 });
+                const token = await baiduAccessToken();
+                const downloadUrl = new URL(await baidu.getDownloadLink(token, fsId));
+                downloadUrl.searchParams.set('access_token', token);
+                const headers = { 'User-Agent': 'pan.baidu.com' };
+                const range = request.headers.get('range');
+                if (range) headers.Range = range;
+                return net.fetch(downloadUrl.toString(), { headers });
+            } catch (error) {
+                log('baidu stream failed: ' + error.message);
+                return new Response(error.message, { status: 502 });
+            }
+        });
         createWindow();
         summonShortcut = loadSummonShortcut();
         let registered = registerSummonShortcut(summonShortcut);

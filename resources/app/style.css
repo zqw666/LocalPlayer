@@ -343,6 +343,111 @@ body.window-hidden .shortcut-panel {
     text-align: center;
 }
 
+.cloud-connect {
+    padding: 14px 12px;
+    overflow: auto;
+}
+.cloud-connect[hidden],
+.cloud-browser[hidden] { display: none; }
+.cloud-title {
+    margin-bottom: 12px;
+    color: #eee;
+    font-size: 14px;
+    line-height: 20px;
+}
+.cloud-connect label {
+    display: block;
+    margin: 9px 0 5px;
+    color: #989898;
+    font-size: 11px;
+    line-height: 16px;
+}
+.cloud-connect input {
+    width: 100%;
+    height: 34px;
+    padding: 0 9px;
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 4px;
+    background: rgba(255,255,255,.055);
+    color: #eee;
+    font: 12px/34px "Segoe UI", sans-serif;
+    user-select: text;
+    outline: none;
+}
+.cloud-connect input:focus { border-color: rgba(77,159,255,.72); }
+.cloud-primary,
+.cloud-secondary,
+.cloud-link {
+    border: 0;
+    border-radius: 4px;
+    font: 12px/1 "Segoe UI", "Microsoft YaHei", sans-serif;
+    cursor: pointer;
+}
+.cloud-primary,
+.cloud-secondary {
+    width: 100%;
+    min-height: 34px;
+    margin-top: 10px;
+    color: #fff;
+}
+.cloud-primary { background: #397fc5; }
+.cloud-secondary { background: rgba(255,255,255,.12); }
+.cloud-primary:hover { background: #468ed7; }
+.cloud-secondary:hover { background: rgba(255,255,255,.17); }
+.cloud-divider { height: 1px; margin: 14px 0 3px; background: rgba(255,255,255,.09); }
+.cloud-status {
+    min-height: 18px;
+    padding: 8px 2px 0;
+    color: #777;
+    font-size: 11px;
+    line-height: 16px;
+}
+.cloud-status.error { color: #ff8e82; }
+.cloud-browser {
+    min-height: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+.cloud-browser[hidden] { display: none; }
+.cloud-toolbar {
+    flex: 0 0 38px;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    padding: 0 6px;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+}
+#baiduPath {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    color: #aaa;
+    font-size: 11px;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+.cloud-link {
+    flex: 0 0 auto;
+    padding: 0 6px;
+    border: 0;
+    background: transparent;
+    color: #777;
+    font: 11px/30px "Segoe UI", "Microsoft YaHei", sans-serif;
+    cursor: pointer;
+}
+.cloud-link:hover { color: #ff8e82; }
+.cloud-folder,
+.cloud-video {
+    flex: 0 0 25px;
+    color: #888;
+    font-size: 16px;
+    line-height: 38px;
+    text-align: center;
+}
+.cloud-video { color: #77b5f5; }
+.cloud-browser > .cloud-status { flex: 0 0 auto; padding: 4px 10px 7px; }
+
 /* 视频铺满，等比缩放 */
 #video {
     position: absolute; inset: 0;

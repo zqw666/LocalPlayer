@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; media-src file: blob:; style-src 'self' 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; media-src file: blob: baidu-video:; style-src 'self' 'unsafe-inline'">
 <title>本地视频播放器</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -95,6 +95,7 @@
         <div class="library-tabs" role="tablist" aria-label="媒体库视图">
             <button id="tabPlaylist" class="library-tab active" type="button" role="tab" aria-selected="true" aria-controls="playlistPanel">播放列表</button>
             <button id="tabHistory" class="library-tab" type="button" role="tab" aria-selected="false" aria-controls="historyPanel">历史记录</button>
+            <button id="tabBaidu" class="library-tab" type="button" role="tab" aria-selected="false" aria-controls="baiduPanel">百度网盘</button>
         </div>
         <button id="btnClearHistory" class="drawer-icon-btn" type="button" title="清空历史" aria-label="清空历史" hidden>
             <svg viewBox="0 0 24 24"><path d="M8 7h8l-.7 13H8.7L8 7zm2-4h4l1 2h4v2H5V5h4l1-2z"/></svg>
@@ -114,6 +115,33 @@
     <section id="historyPanel" class="library-panel" role="tabpanel" aria-labelledby="tabHistory" hidden>
         <div id="historyList" class="media-list"></div>
         <div id="historyEmpty" class="library-empty">暂无观看历史</div>
+    </section>
+
+    <section id="baiduPanel" class="library-panel" role="tabpanel" aria-labelledby="tabBaidu" hidden>
+        <div id="baiduConnect" class="cloud-connect">
+            <div class="cloud-title">连接百度网盘</div>
+            <label for="baiduApiKey">API Key</label>
+            <input id="baiduApiKey" type="text" autocomplete="off" spellcheck="false">
+            <label for="baiduSecretKey">Secret Key</label>
+            <input id="baiduSecretKey" type="password" autocomplete="off" spellcheck="false">
+            <button id="btnBaiduAuthorize" class="cloud-primary" type="button">保存并打开授权页</button>
+            <div class="cloud-divider"></div>
+            <label for="baiduAuthCode">授权码</label>
+            <input id="baiduAuthCode" type="text" autocomplete="off" spellcheck="false">
+            <button id="btnBaiduComplete" class="cloud-secondary" type="button">完成连接</button>
+            <div id="baiduConnectStatus" class="cloud-status" role="status">凭据仅加密保存在本机</div>
+        </div>
+        <div id="baiduBrowser" class="cloud-browser" hidden>
+            <div class="cloud-toolbar">
+                <button id="btnBaiduBack" class="drawer-icon-btn" type="button" title="返回上级" aria-label="返回上级">‹</button>
+                <span id="baiduPath" title="/">/</span>
+                <button id="btnBaiduRefresh" class="drawer-icon-btn" type="button" title="刷新" aria-label="刷新">↻</button>
+                <button id="btnBaiduDisconnect" class="cloud-link" type="button">断开</button>
+            </div>
+            <div id="baiduList" class="media-list"></div>
+            <div id="baiduEmpty" class="library-empty">此目录没有可播放内容</div>
+            <div id="baiduBrowserStatus" class="cloud-status" role="status"></div>
+        </div>
     </section>
 </aside>
 
