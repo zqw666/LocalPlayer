@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('player', {
     baiduList: (directory) => ipcRenderer.invoke('baidu-list', directory),
     baiduCloudItem: (file) => ipcRenderer.invoke('baidu-cloud-item', file),
     baiduDisconnect: () => ipcRenderer.invoke('baidu-disconnect'),
+    onBaiduStreamStats: (cb) => ipcRenderer.on('baidu-stream-stats', (_event, stats) => cb(stats)),
     // 主进程同步全屏状态
     onFsState: (cb) => ipcRenderer.on('fs-state', (_e, fs) => cb(fs)),
     // 打开文件对话框

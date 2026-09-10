@@ -4,6 +4,7 @@ const api = window.player;
 const video = document.getElementById('video');
 const hint = document.getElementById('hint');
 const hintText = hint.querySelector('.hint-text');
+const networkStats = document.getElementById('networkStats');
 const dropMask = document.getElementById('dropMask');
 const controls = document.getElementById('controls');
 const btnPlay = document.getElementById('btnPlay');
@@ -90,6 +91,29 @@ let currentSummonShortcut = 'CommandOrControl+Alt+P';
 let baiduDirectory = '/';
 let baiduFiles = [];
 let baiduConnected = false;
+let statsIdleTimer = null;
+
+function formatTransferRate(bytesPerSecond) {
+    const rate = Math.max(0, Number(bytesPerSecond) || 0);
+    if (rate < 1024 * 1024) return Math.round(rate / 1024) + ' KB/s';
+    return (rate / 1024 / 1024).toFixed(1) + ' MB/s';
+}
+
+function resetNetworkStats() {
+    clearTimeout(statsIdleTimer);
+    networkStats.hidden = currentMedia?.source !== 'baidu';
+    networkStats.textContent = '↓ 0 KB/s';
+}
+
+api.onBaiduStreamStats((stats) => {
+    if (currentMedia?.source !== 'baidu' || String(stats.fsId) !== String(currentMedia.fsId)) return;
+    networkStats.hidden = false;
+    networkStats.textContent = '↓ ' + formatTransferRate(stats.bytesPerSecond);
+    clearTimeout(statsIdleTimer);
+    statsIdleTimer = setTimeout(() => {
+        if (currentMedia?.source === 'baidu') networkStats.textContent = '↓ 0 KB/s';
+    }, 2500);
+});
 
 function showPlaybackError(error) {
     const detail = error?.message || String(error || '未知错误');
@@ -731,6 +755,7 @@ function clearVideo() {
     video.load();
     currentPath = '';
     currentMedia = null;
+    resetNetworkStats();
     currentIndex = -1;
     seek.value = 0;
     timeEl.textContent = '0:00 / 0:00';
@@ -744,6 +769,7 @@ function loadVideo(item, options = {}) {
     const autoplay = options.autoplay !== false;
     if (!video.paused) video.pause();
     currentMedia = item;
+    resetNetworkStats();
     currentPath = item.path;
     lastSave = 0;
     hintText.textContent = '把视频文件拖进窗口，或点击下方「打开」';

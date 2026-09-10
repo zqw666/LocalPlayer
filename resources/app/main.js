@@ -333,6 +333,7 @@ ipcMain.handle('baidu-configure', (_event, apiKey, secretKey) => {
     }
     baiduCredentials = { apiKey: nextApiKey, secretKey: nextSecretKey };
     baiduTokens = null;
+    baiduStreamProxy?.clearCache();
     saveBaiduState();
     return baiduStatus();
 });
@@ -364,6 +365,7 @@ ipcMain.handle('baidu-cloud-item', (_event, file) => {
 ipcMain.handle('baidu-disconnect', () => {
     baiduCredentials = null;
     baiduTokens = null;
+    baiduStreamProxy?.clearCache();
     saveBaiduState();
     return baiduStatus();
 });
@@ -404,6 +406,9 @@ if (gotSingleInstanceLock) {
             baiduStreamProxy = await startBaiduStreamServer({
                 getAccessToken: baiduAccessToken,
                 getDownloadLink: baidu.getDownloadLink,
+                onStats: (stats) => {
+                    if (win && !win.isDestroyed()) win.webContents.send('baidu-stream-stats', stats);
+                },
                 log
             });
         } catch (error) {

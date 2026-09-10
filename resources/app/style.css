@@ -53,6 +53,19 @@ body:not(.window-hidden) .library-drawer {
     display: flex;
     -webkit-app-region: no-drag;
 }
+.network-stats {
+    position: absolute;
+    top: 38px;
+    left: 12px;
+    z-index: 6;
+    min-width: 86px;
+    color: rgba(255,255,255,.72);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    text-shadow: 0 1px 3px rgba(0,0,0,.9);
+    pointer-events: none;
+}
+.network-stats[hidden] { display: none; }
 .window-btn {
     width: 34px;
     height: 28px;
