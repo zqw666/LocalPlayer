@@ -48,7 +48,11 @@ D:\project\LocalPlayer\
       5) lastSave 重复声明 → 已清理（原声明本就在 17 行，进度记忆逻辑无 bug）
 - [x] 三层通道一致性已核对：renderer 调用的 7 个 api.* 与 preload 暴露全对齐；13 个 DOM id 引用全命中；IPC channel 名 main/preload 完全一致
 - [x] 在 WorkBuddy 沙箱内主进程能启动（`[player] main process started` 有输出）
-- [ ] **页面 `did-finish-load` 在沙箱内始终未触发**（desktop.log 为空）——沙箱会绞杀 Electron 的渲染/网络子进程，属沙箱限制，**真实桌面大概率正常，但也可能是真 bug，需要你实测判断**
+- [x] **2026-09-17 更正：渲染子进程在沙箱内可正常运行**（此前判断有误）。原"`did-finish-load` 始终未触发"的真因是
+      **GPU 进程反复崩溃 → 主进程 `FATAL: GPU process isn't usable. Goodbye.` 直接退出**，页面根本来不及加载。
+      加 `--no-sandbox --disable-gpu --in-process-gpu --disable-software-rasterizer` 后，已用 CDP（远程调试端口）
+      在真实渲染层完成端到端验证：媒体库可打开、视频可播放、字幕面板正常加载并解析出 2450 条 cue。
+      → 结论：从命令行启动必须带这组参数，且**启动与操作要放在同一条命令里**（后台 `&` 实例会随命令结束被回收）。
 - [ ] 窗口弹出、拖放播放、隐形交互、进度记忆 —— 全部未在真实桌面验证
 
 ## 已知坑与注意事项
@@ -58,7 +62,13 @@ D:\project\LocalPlayer\
 3. 若窗口弹了但隐形逻辑不生效，检查：窗口是否真的拿到焦点、`document.contains(e.relatedTarget)` 判定是否符合预期（可用 devtools：`"本地视频播放器.exe" --disable-gpu --remote-debugging-port=9222` 后开 Chrome 访问 localhost:9222）
 4. **范围限制**：Chromium 内核只能解 mp4/webm/mov 及 h264 编码的 mkv；hevc/rmvb/avi(部分) 放不了属正常，不是 bug
 5. 别碰同盘的其它项目：`D:\project\KVideo`（网页版源码）、`D:\project\KVideo-desktop`、`D:\project\KVideo-electron`、`D:\project\mpv` 都与本任务无关
-6. 环境变量 `ELECTRON_RUN_AS_NODE` 只在 WorkBuddy 沙箱注入，你的终端没有，不用处理；若恰好有，`env -u ELECTRON_RUN_AS_NODE` 去掉再跑
+6. 环境变量 `ELECTRON_RUN_AS_NODE` **2026-09-17 更正**：它并非"沙箱"注入，而是**宿主 Electron 进程的环境继承**
+   —— 实测把沙箱完全关掉（`dangerouslyDisableSandbox`）后它**依然存在**，因此没有配置开关能去掉它。
+   同源的还有 `NODE_OPTIONS`（指向 `node-language-shim.cjs`，会让 Electron 报 "Most NODE_OPTIONs are not
+   supported in packaged apps"）、`BASH_ENV`、`PYTHONPATH`。从 Bash/命令行启动 exe 时必须剥离，否则 exe 会以
+   Node 模式运行而立即退出且无任何窗口：
+   `env -u ELECTRON_RUN_AS_NODE -u NODE_OPTIONS -u PYTHONPATH -u BASH_ENV ./本地视频播放器.exe`
+   你自己的终端（资源管理器双击、cmd、PowerShell）没有这些变量，无需处理。
 7. 改完源码**无需重新打包**，直接重跑 exe 即生效（便携模式实时读 resources\app）
 
 ## 建议工作顺序

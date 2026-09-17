@@ -21,6 +21,9 @@ contextBridge.exposeInMainWorld('player', {
     baiduCompleteAuthorization: (code) => ipcRenderer.invoke('baidu-complete-authorization', code),
     baiduList: (directory) => ipcRenderer.invoke('baidu-list', directory),
     baiduCloudItem: (file) => ipcRenderer.invoke('baidu-cloud-item', file),
+    baiduCreateTranscription: (fsId, language) => ipcRenderer.invoke('baidu-transcription-create', fsId, language),
+    baiduQueryTranscription: (taskId) => ipcRenderer.invoke('baidu-transcription-query', taskId),
+    baiduFetchSubtitle: (filePath) => ipcRenderer.invoke('baidu-subtitle-fetch', filePath),
     baiduDisconnect: () => ipcRenderer.invoke('baidu-disconnect'),
     onBaiduStreamStats: (cb) => ipcRenderer.on('baidu-stream-stats', (_event, stats) => cb(stats)),
     // 主进程同步全屏状态

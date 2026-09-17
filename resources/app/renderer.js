@@ -14,6 +14,8 @@ const btnPrev = document.getElementById('btnPrev');
 const btnNext = document.getElementById('btnNext');
 const btnFs = document.getElementById('btnFs');
 const btnVol = document.getElementById('btnVol');
+const btnSubtitle = document.getElementById('btnSubtitle');
+const btnSpeed = document.getElementById('btnSpeed');
 const btnLibrary = document.getElementById('btnLibrary');
 const btnFit = document.getElementById('btnFit');
 const btnOpacity = document.getElementById('btnOpacity');
@@ -23,6 +25,12 @@ const btnClose = document.getElementById('btnClose');
 const seek = document.getElementById('seek');
 const vol = document.getElementById('vol');
 const timeEl = document.getElementById('time');
+const subtitleMenu = document.getElementById('subtitleMenu');
+const subtitleStatus = document.getElementById('subtitleStatus');
+const subtitleLanguage = document.getElementById('subtitleLanguage');
+const btnGenerateSubtitle = document.getElementById('btnGenerateSubtitle');
+const btnToggleSubtitle = document.getElementById('btnToggleSubtitle');
+const speedMenu = document.getElementById('speedMenu');
 
 const opacityPanel = document.getElementById('opacityPanel');
 const playOpacity = document.getElementById('playOpacity');
@@ -68,7 +76,10 @@ const baiduBrowserStatus = document.getElementById('baiduBrowserStatus');
 
 const PLAYLIST_KEY = 'player_playlist_v1';
 const HISTORY_KEY = 'player_history_v1';
+const TRANSCRIPTION_TASKS_KEY = 'baidu_transcription_tasks_v1';
+const PLAYBACK_RATE_KEY = 'player_playback_rate_v1';
 const HISTORY_LIMIT = 30;
+const PLAYBACK_RATES = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 let currentPath = '';
 let currentMedia = null;
@@ -92,6 +103,36 @@ let baiduDirectory = '/';
 let baiduFiles = [];
 let baiduConnected = false;
 let statsIdleTimer = null;
+let subtitleTrack = null;
+let subtitleObjectUrl = '';
+let subtitlePollTimer = null;
+let subtitleRequestVersion = 0;
+
+function hasOpenControlMenu() {
+    return !subtitleMenu.hidden || !speedMenu.hidden;
+}
+
+function closeControlMenus() {
+    subtitleMenu.hidden = true;
+    speedMenu.hidden = true;
+    btnSubtitle.classList.remove('active');
+    btnSpeed.classList.remove('active');
+    btnSubtitle.setAttribute('aria-expanded', 'false');
+    btnSpeed.setAttribute('aria-expanded', 'false');
+}
+
+function setControlMenuOpen(menu, button, open) {
+    closeControlMenus();
+    if (open) {
+        menu.hidden = false;
+        button.classList.add('active');
+        button.setAttribute('aria-expanded', 'true');
+        showCursor();
+        showControls();
+    } else {
+        scheduleCursorHide();
+    }
+}
 
 function formatTransferRate(bytesPerSecond) {
     const rate = Math.max(0, Number(bytesPerSecond) || 0);
@@ -204,7 +245,7 @@ function scheduleCursorHide() {
     showCursor();
     clearTimeout(cursorHideTimer);
     cursorHideTimer = setTimeout(() => {
-        if (windowHidden || shortcutRecording || !opacityPanel.hidden || !shortcutPanel.hidden || !libraryDrawer.hidden) return;
+        if (windowHidden || shortcutRecording || !opacityPanel.hidden || !shortcutPanel.hidden || !libraryDrawer.hidden || hasOpenControlMenu()) return;
         document.body.classList.add('cursor-hidden');
     }, 1000);
 }
@@ -215,6 +256,7 @@ function scheduleWindowHide() {
         if (windowHidden || shortcutRecording) return;
         setOpacityPanelOpen(false);
         setShortcutPanelOpen(false);
+        closeControlMenus();
         windowHidden = true;
         document.body.classList.add('window-hidden');
         api.setWindowContentHidden(true);
@@ -238,6 +280,7 @@ function setOpacityPanelOpen(open) {
     btnOpacity.setAttribute('aria-expanded', String(open));
     if (open) showCursor(); else scheduleCursorHide();
     if (open) {
+        closeControlMenus();
         setLibraryOpen(false);
         setShortcutPanelOpen(false);
     }
@@ -281,6 +324,7 @@ function setShortcutPanelOpen(open) {
     btnShortcut.setAttribute('aria-expanded', String(open));
     if (open) showCursor(); else scheduleCursorHide();
     if (open) {
+        closeControlMenus();
         setOpacityPanelOpen(false);
         setLibraryOpen(false);
     } else {
@@ -381,6 +425,10 @@ document.addEventListener('mousedown', (event) => {
     if (!shortcutPanel.hidden && !btnShortcut.contains(event.target) && !shortcutPanel.contains(event.target)) {
         setShortcutPanelOpen(false);
     }
+    if (hasOpenControlMenu() && !subtitleMenu.contains(event.target) && !speedMenu.contains(event.target) &&
+        !btnSubtitle.contains(event.target) && !btnSpeed.contains(event.target)) {
+        closeControlMenus();
+    }
 });
 btnFit.onclick = () => applyFitMode(document.body.classList.contains('video-cover') ? 'contain' : 'cover');
 btnMin.onclick = () => api.minimizeWindow();
@@ -393,6 +441,7 @@ function setLibraryOpen(open) {
     btnLibrary.setAttribute('aria-expanded', String(open));
     if (open) showCursor(); else scheduleCursorHide();
     if (open) {
+        closeControlMenus();
         opacityPanel.hidden = true;
         btnOpacity.setAttribute('aria-expanded', 'false');
         setShortcutPanelOpen(false);
@@ -726,6 +775,220 @@ btnClearHistory.onclick = () => {
     renderHistory();
 };
 
+/* ============ AI 字幕与播放速度 ============ */
+function normalizePlaybackRate(value) {
+    const rate = Number(value);
+    return PLAYBACK_RATES.includes(rate) ? rate : 1;
+}
+
+function formatPlaybackRate(rate) {
+    return String(rate).replace(/\.0$/, '') + '×';
+}
+
+function applyPlaybackRate(value, persist = true) {
+    const rate = normalizePlaybackRate(value);
+    video.defaultPlaybackRate = rate;
+    video.playbackRate = rate;
+    btnSpeed.textContent = formatPlaybackRate(rate);
+    btnSpeed.title = '播放速度：' + formatPlaybackRate(rate);
+    btnSpeed.setAttribute('aria-label', btnSpeed.title);
+    speedMenu.querySelectorAll('[data-rate]').forEach((button) => {
+        const active = Number(button.dataset.rate) === rate;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-checked', String(active));
+    });
+    if (persist) localStorage.setItem(PLAYBACK_RATE_KEY, String(rate));
+}
+
+btnSpeed.onclick = () => setControlMenuOpen(speedMenu, btnSpeed, speedMenu.hidden);
+speedMenu.querySelectorAll('[data-rate]').forEach((button) => {
+    button.onclick = () => {
+        applyPlaybackRate(button.dataset.rate);
+        setControlMenuOpen(speedMenu, btnSpeed, false);
+    };
+});
+applyPlaybackRate(localStorage.getItem(PLAYBACK_RATE_KEY), false);
+
+function readTranscriptionTasks() {
+    return readStoredObject(TRANSCRIPTION_TASKS_KEY) || {};
+}
+
+function saveTranscriptionTask(fsId, taskId, language) {
+    const tasks = readTranscriptionTasks();
+    tasks[String(fsId)] = { taskId, language, updatedAt: Date.now() };
+    const trimmed = Object.fromEntries(Object.entries(tasks)
+        .sort((a, b) => (b[1]?.updatedAt || 0) - (a[1]?.updatedAt || 0))
+        .slice(0, 30));
+    localStorage.setItem(TRANSCRIPTION_TASKS_KEY, JSON.stringify(trimmed));
+}
+
+function removeTranscriptionTask(fsId) {
+    const tasks = readTranscriptionTasks();
+    delete tasks[String(fsId)];
+    localStorage.setItem(TRANSCRIPTION_TASKS_KEY, JSON.stringify(tasks));
+}
+
+function setSubtitleStatus(message, error = false) {
+    subtitleStatus.textContent = message;
+    subtitleStatus.classList.toggle('error', error);
+}
+
+function removeSubtitleTrack() {
+    if (subtitleTrack) subtitleTrack.remove();
+    subtitleTrack = null;
+    if (subtitleObjectUrl) URL.revokeObjectURL(subtitleObjectUrl);
+    subtitleObjectUrl = '';
+    btnSubtitle.classList.remove('subtitle-on');
+    btnToggleSubtitle.hidden = true;
+}
+
+function loadSubtitleText(text, language, statusText = '字幕已加载') {
+    removeSubtitleTrack();
+    const vtt = window.subtitleUtils.srtToVtt(text);
+    subtitleObjectUrl = URL.createObjectURL(new Blob([vtt], { type: 'text/vtt' }));
+    subtitleTrack = document.createElement('track');
+    subtitleTrack.kind = 'subtitles';
+    subtitleTrack.label = 'AI 字幕';
+    subtitleTrack.srclang = language || 'zh';
+    subtitleTrack.default = true;
+    subtitleTrack.dataset.aiSubtitle = 'true';
+    subtitleTrack.src = subtitleObjectUrl;
+    subtitleTrack.addEventListener('load', () => {
+        if (subtitleTrack) subtitleTrack.track.mode = 'showing';
+    }, { once: true });
+    video.appendChild(subtitleTrack);
+    subtitleTrack.track.mode = 'showing';
+    btnSubtitle.classList.add('subtitle-on');
+    btnGenerateSubtitle.hidden = true;
+    btnToggleSubtitle.hidden = false;
+    btnToggleSubtitle.textContent = '隐藏字幕';
+    subtitleLanguage.disabled = true;
+    setSubtitleStatus(statusText);
+}
+
+async function pollTranscription(taskId, fsId, language, version) {
+    if (version !== subtitleRequestVersion || String(currentMedia?.fsId) !== String(fsId)) return;
+    try {
+        const result = await api.baiduQueryTranscription(taskId);
+        if (version !== subtitleRequestVersion || String(currentMedia?.fsId) !== String(fsId)) return;
+        if (result.status === 300) {
+            if (!result.subtitleText) throw new Error('百度网盘没有返回字幕内容');
+            loadSubtitleText(result.subtitleText, language);
+            return;
+        }
+        if (result.status === 301 || result.status === 400) {
+            removeTranscriptionTask(fsId);
+            subtitleLanguage.disabled = false;
+            btnGenerateSubtitle.disabled = false;
+            btnGenerateSubtitle.textContent = '重新获取';
+            setSubtitleStatus(result.errorMessage || `字幕生成失败 (${result.errorCode || result.status})`, true);
+            return;
+        }
+        setSubtitleStatus(result.status === 100 ? '字幕任务已提交' : '正在生成字幕…');
+        subtitlePollTimer = setTimeout(() => pollTranscription(taskId, fsId, language, version), 4000);
+    } catch (error) {
+        btnGenerateSubtitle.disabled = false;
+        btnGenerateSubtitle.textContent = '重新查询';
+        setSubtitleStatus(cloudError(error), true);
+    }
+}
+
+function bundledSubtitleLanguage() {
+    return localStorage.getItem('baidu_subtitle_language_v1') || subtitleLanguage.value || 'zh';
+}
+
+// 网盘客户端若已经为该视频生成过 AI 字幕，直接取回即可，不需要转写权益。
+async function tryBundledSubtitle(fsId, version) {
+    const cloudPath = currentMedia?.cloudPath;
+    if (!cloudPath || typeof api.baiduFetchSubtitle !== 'function') return false;
+    setSubtitleStatus('正在查找网盘字幕…');
+    try {
+        const result = await api.baiduFetchSubtitle(cloudPath);
+        if (version !== subtitleRequestVersion) return true;
+        if (!result?.text) return false;
+        loadSubtitleText(result.text, bundledSubtitleLanguage(), '已加载网盘自带的 AI 字幕');
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+async function generateOrResumeSubtitle() {
+    if (currentMedia?.source !== 'baidu' || !currentMedia.fsId) return;
+    const fsId = String(currentMedia.fsId);
+    const saved = readTranscriptionTasks()[fsId];
+    const language = saved?.language || subtitleLanguage.value;
+    const version = ++subtitleRequestVersion;
+    clearTimeout(subtitlePollTimer);
+    btnGenerateSubtitle.disabled = true;
+    btnGenerateSubtitle.textContent = '获取中';
+    subtitleLanguage.disabled = true;
+
+    if (!saved && await tryBundledSubtitle(fsId, version)) {
+        if (version === subtitleRequestVersion) {
+            btnGenerateSubtitle.disabled = false;
+            btnGenerateSubtitle.textContent = '获取字幕';
+        }
+        return;
+    }
+    if (version !== subtitleRequestVersion || String(currentMedia?.fsId) !== fsId) return;
+
+    setSubtitleStatus(saved ? '正在查询字幕…' : '正在提交字幕任务…');
+
+    try {
+        const task = saved || await api.baiduCreateTranscription(fsId, language);
+        if (version !== subtitleRequestVersion || String(currentMedia?.fsId) !== fsId) return;
+        if (!saved) saveTranscriptionTask(fsId, task.taskId, language);
+        await pollTranscription(task.taskId, fsId, language, version);
+    } catch (error) {
+        if (version !== subtitleRequestVersion || String(currentMedia?.fsId) !== fsId) return;
+        subtitleLanguage.disabled = false;
+        btnGenerateSubtitle.disabled = false;
+        btnGenerateSubtitle.textContent = '重试';
+        setSubtitleStatus(cloudError(error), true);
+    }
+}
+
+function prepareSubtitleForMedia() {
+    subtitleRequestVersion++;
+    clearTimeout(subtitlePollTimer);
+    removeSubtitleTrack();
+    btnGenerateSubtitle.hidden = false;
+    btnGenerateSubtitle.disabled = false;
+    btnGenerateSubtitle.textContent = '获取字幕';
+    subtitleLanguage.disabled = false;
+
+    const cloudVideo = currentMedia?.source === 'baidu' && currentMedia.fsId;
+    btnSubtitle.disabled = !cloudVideo;
+    if (!cloudVideo) {
+        setSubtitleStatus('仅支持百度网盘视频');
+        return;
+    }
+
+    const saved = readTranscriptionTasks()[String(currentMedia.fsId)];
+    if (!saved?.taskId) {
+        subtitleLanguage.value = localStorage.getItem('baidu_subtitle_language_v1') || 'zh';
+        setSubtitleStatus('尚未生成字幕');
+        return;
+    }
+    subtitleLanguage.value = saved.language || 'zh';
+    subtitleLanguage.disabled = true;
+    btnGenerateSubtitle.textContent = '查询字幕';
+    void generateOrResumeSubtitle();
+}
+
+btnSubtitle.onclick = () => setControlMenuOpen(subtitleMenu, btnSubtitle, subtitleMenu.hidden);
+btnGenerateSubtitle.onclick = () => void generateOrResumeSubtitle();
+btnToggleSubtitle.onclick = () => {
+    if (!subtitleTrack) return;
+    const showing = subtitleTrack.track.mode !== 'showing';
+    subtitleTrack.track.mode = showing ? 'showing' : 'disabled';
+    btnSubtitle.classList.toggle('subtitle-on', showing);
+    btnToggleSubtitle.textContent = showing ? '隐藏字幕' : '显示字幕';
+    setSubtitleStatus(showing ? '字幕已显示' : '字幕已隐藏');
+};
+subtitleLanguage.onchange = () => localStorage.setItem('baidu_subtitle_language_v1', subtitleLanguage.value);
+
 /* ============ 播放队列与进度 ============ */
 function savePlaylistState() {
     if (!playlistRoot) {
@@ -756,6 +1019,7 @@ function clearVideo() {
     currentPath = '';
     currentMedia = null;
     resetNetworkStats();
+    prepareSubtitleForMedia();
     currentIndex = -1;
     seek.value = 0;
     timeEl.textContent = '0:00 / 0:00';
@@ -778,6 +1042,8 @@ function loadVideo(item, options = {}) {
     document.body.classList.remove('is-playing');
     video.volume = Number(localStorage.getItem('vol') ?? 1);
     video.src = item.url;
+    applyPlaybackRate(localStorage.getItem(PLAYBACK_RATE_KEY), false);
+    prepareSubtitleForMedia();
 
     const loadingPath = item.path;
     video.onloadedmetadata = () => {
@@ -894,7 +1160,7 @@ function showControls() {
     controls.classList.add('show');
     clearTimeout(ctrlTimer);
     ctrlTimer = setTimeout(() => {
-        if (!video.paused) controls.classList.remove('show');
+        if (!video.paused && !hasOpenControlMenu()) controls.classList.remove('show');
     }, 1000);
 }
 
@@ -927,7 +1193,7 @@ btnVol.onclick = () => {
 video.addEventListener('mousemove', showControls);
 video.addEventListener('mouseleave', () => {
     clearTimeout(ctrlTimer);
-    if (!video.paused && !controls.matches(':hover')) controls.classList.remove('show');
+    if (!video.paused && !controls.matches(':hover') && !hasOpenControlMenu()) controls.classList.remove('show');
 });
 controls.addEventListener('mouseenter', () => {
     clearTimeout(ctrlTimer);
@@ -935,7 +1201,7 @@ controls.addEventListener('mouseenter', () => {
 });
 controls.addEventListener('mouseleave', () => {
     clearTimeout(ctrlTimer);
-    if (!video.paused) ctrlTimer = setTimeout(() => controls.classList.remove('show'), 1000);
+    if (!video.paused && !hasOpenControlMenu()) ctrlTimer = setTimeout(() => controls.classList.remove('show'), 1000);
 });
 
 video.addEventListener('play', () => {
@@ -1084,7 +1350,8 @@ document.addEventListener('keydown', async (event) => {
             api.toggleFullscreen();
             break;
         case 'Escape':
-            if (fullScreen) api.exitFullscreen();
+            if (hasOpenControlMenu()) closeControlMenus();
+            else if (fullScreen) api.exitFullscreen();
             else if (!shortcutPanel.hidden) setShortcutPanelOpen(false);
             else if (!opacityPanel.hidden) setOpacityPanelOpen(false);
             else if (!libraryDrawer.hidden) setLibraryOpen(false);
@@ -1107,5 +1374,6 @@ renderPlaylist();
 renderHistory();
 setLibraryTab('playlist');
 showControls();
+prepareSubtitleForMedia();
 loadShortcutSetting();
 restoreLastPlaylist();

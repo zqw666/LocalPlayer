@@ -362,6 +362,25 @@ ipcMain.handle('baidu-cloud-item', (_event, file) => {
     const streamUrl = baiduStreamProxy.urlFor(file.fsId);
     return baidu.cloudItem({ fs_id: file.fsId, path: file.path, server_filename: file.name, size: file.size }, streamUrl);
 });
+ipcMain.handle('baidu-transcription-create', async (_event, fsId, language) => {
+    const result = await baidu.createTranscription(await baiduAccessToken(), fsId, language);
+    log(`baidu transcription created fsId=${fsId} taskId=${result.taskId}`);
+    return result;
+});
+ipcMain.handle('baidu-transcription-query', async (_event, taskId) => {
+    const result = await baidu.queryTranscription(await baiduAccessToken(), taskId);
+    if (result.status === 300) {
+        if (!result.subtitleUrl) throw new Error('百度网盘转写完成，但没有返回 SRT 字幕');
+        result.subtitleText = await baidu.downloadSubtitle(result.subtitleUrl);
+    }
+    delete result.subtitleUrl;
+    return result;
+});
+ipcMain.handle('baidu-subtitle-fetch', async (_event, filePath) => {
+    const result = await baidu.fetchBundledSubtitle(await baiduAccessToken(), filePath);
+    log(`baidu bundled subtitle loaded bytes=${result.text.length}`);
+    return result;
+});
 ipcMain.handle('baidu-disconnect', () => {
     baiduCredentials = null;
     baiduTokens = null;
